@@ -8,48 +8,95 @@ jobs:
     runs-on: macos-26
 
     steps:
+
+      # ============================================================
+      # CHECK OUT SOURCE
+      # ============================================================
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
+
+      # ============================================================
+      # SELECT XCODE
+      # ============================================================
+
       - name: Select Xcode
         run: |
+          echo "Available Xcode installations:"
+          ls -d /Applications/Xcode*.app
+
+          echo ""
+          echo "Selecting Xcode 26.5..."
+
           sudo xcode-select -s /Applications/Xcode_26.5.app
+
+          echo ""
+          echo "Selected Xcode:"
+          xcode-select -p
+
+
+      # ============================================================
+      # SHOW BUILD ENVIRONMENT
+      # ============================================================
 
       - name: Show Versions
         run: |
           echo "======================================"
           echo "XCODE VERSION"
           echo "======================================"
+
           xcodebuild -version
 
           echo ""
           echo "======================================"
           echo "SWIFT VERSION"
           echo "======================================"
+
           swift --version
 
           echo ""
           echo "======================================"
-          echo "AVAILABLE XCODE VERSIONS"
+          echo "SDK VERSION"
           echo "======================================"
-          ls -d /Applications/Xcode*.app
 
-      - name: Trust Swift Package Plugins
+          xcrun --sdk iphoneos --show-sdk-version
+
+          echo ""
+          echo "======================================"
+          echo "XCODE PATH"
+          echo "======================================"
+
+          xcode-select -p
+
+
+      # ============================================================
+      # DISABLE CI TRUST VALIDATION
+      # ============================================================
+
+      - name: Configure Swift Package Validation
         run: |
-          echo "Disabling package plugin validation for CI..."
-
-          defaults write com.apple.dt.Xcode \
-            IDESkipPackagePluginFingerprintValidatation \
-            -bool YES
-
-          echo "Disabling macro validation for CI..."
+          echo "Configuring Xcode for non-interactive CI builds..."
 
           defaults write com.apple.dt.Xcode \
             IDESkipMacroFingerprintValidation \
             -bool YES
 
+          echo "Macro fingerprint validation disabled."
+
+
+      # ============================================================
+      # RESOLVE SWIFT PACKAGES
+      # ============================================================
+
       - name: Resolve Package Dependencies
         run: |
+          set -e
+
+          echo "======================================"
+          echo "RESOLVING PACKAGE DEPENDENCIES"
+          echo "======================================"
+
           xcodebuild \
             -resolvePackageDependencies \
             -project OpenVision.xcodeproj \
@@ -57,14 +104,33 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation
 
+          echo ""
+          echo "Package resolution completed."
+
+
+      # ============================================================
+      # BUILD APPLICATION
+      # ============================================================
+
       - name: Build App
         run: |
+          set -e
+
+          echo "======================================"
+          echo "BUILDING OPENVISION"
+          echo "======================================"
+
+          rm -rf build
+
+          mkdir -p build
+
           xcodebuild \
             -project OpenVision.xcodeproj \
             -scheme OpenVision \
             -configuration Release \
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
+            -derivedDataPath "$PWD/build/DerivedData" \
             -skipPackagePluginValidation \
             -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
@@ -73,22 +139,50 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             clean build
 
-      - name: Check Built App
-        run: |
+          echo ""
           echo "======================================"
-          echo "CHECKING BUILD OUTPUT"
+          echo "XCODE BUILD FINISHED"
           echo "======================================"
 
-          if [ -d "build/Release-iphoneos/OpenVision.app" ]; then
-            echo "OpenVision.app found!"
-            du -sh build/Release-iphoneos/OpenVision.app
-          else
-            echo "OpenVision.app was not found in the expected location."
+
+      # ============================================================
+      # FIND THE APP
+      # ============================================================
+
+      - name: Locate Built App
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "SEARCHING FOR OPENVISION.APP"
+          echo "======================================"
+
+          find build/DerivedData \
+            -name "OpenVision.app" \
+            -type d \
+            -print
+
+          APP_PATH=$(find build/DerivedData \
+            -name "OpenVision.app" \
+            -type d \
+            -print -quit)
+
+          if [ -z "$APP_PATH" ]; then
             echo ""
-            echo "Searching for the application..."
-            find . -name "OpenVision.app" -type d -print
+            echo "ERROR: OpenVision.app was not found."
             exit 1
           fi
+
+          echo ""
+          echo "Found application:"
+          echo "$APP_PATH"
+
+          echo "$APP_PATH" > build/app_path.txt
+
+
+      # ============================================================
+      # PACKAGE IPA
+      # ============================================================
 
       - name: Package IPA
         run: |
@@ -98,11 +192,17 @@ jobs:
           echo "PACKAGING IPA"
           echo "======================================"
 
+          APP_PATH=$(cat build/app_path.txt)
+
+          echo "Application:"
+          echo "$APP_PATH"
+
           rm -rf build/Payload
+
           mkdir -p build/Payload
 
           cp -R \
-            build/Release-iphoneos/OpenVision.app \
+            "$APP_PATH" \
             build/Payload/OpenVision.app
 
           cd build
@@ -118,6 +218,11 @@ jobs:
 
           ls -lh OpenVision.ipa
 
+
+      # ============================================================
+      # UPLOAD IPA
+      # ============================================================
+
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -125,10 +230,20 @@ jobs:
           path: build/OpenVision.ipa
           if-no-files-found: error
 
+
+      # ============================================================
+      # FINISH
+      # ============================================================
+
       - name: Complete
         run: |
           echo ""
           echo "======================================"
           echo "BUILD COMPLETE"
           echo "======================================"
-          echo "OpenVision.ipa has been created successfully."
+
+          echo "OpenVision.ipa was successfully created."
+
+          echo ""
+          echo "IPA:"
+          ls -lh build/OpenVision.ipa
