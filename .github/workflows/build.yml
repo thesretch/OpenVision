@@ -1,23 +1,61 @@
-- name: Patch Swift Tools Version
-  run: |
-    # Resolve dependencies so SwiftPM downloads the packages
-    xcodebuild -resolvePackageDependencies \
-      -project OpenVision.xcodeproj \
-      -scheme OpenVision || true
+name: Build IPA
 
-    echo "Searching for kokoro-ios Package.swift files..."
+on:
+  workflow_dispatch:
 
-    find ~/Library/Caches/org.swift.swiftpm \
-         ~/Library/Developer/Xcode/DerivedData \
-         . \
-         -path "*kokoro-ios*/Package.swift" \
-         -exec sed -i '' \
-         's/swift-tools-version: 6\.2/swift-tools-version: 6.1/g' {} + \
-         2>/dev/null || true
+jobs:
+  build:
+    runs-on: macos-26
 
-    echo "Checking what was found:"
-    find ~/Library/Caches/org.swift.swiftpm \
-         ~/Library/Developer/Xcode/DerivedData \
-         . \
-         -path "*kokoro-ios*/Package.swift" \
-         -print 2>/dev/null || true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.5.app
+
+      - name: Show Versions
+        run: |
+          echo "=== Xcode ==="
+          xcodebuild -version
+          echo ""
+          echo "=== Swift ==="
+          swift --version
+          echo ""
+          echo "=== Available Xcode Versions ==="
+          ls -d /Applications/Xcode*.app
+
+      - name: Resolve Package Dependencies
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project OpenVision.xcodeproj \
+            -scheme OpenVision
+
+      - name: Build App
+        run: |
+          xcodebuild \
+            -project OpenVision.xcodeproj \
+            -scheme OpenVision \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            clean build
+
+      - name: Package IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/Release-iphoneos/OpenVision.app build/Payload/
+          cd build
+          zip -r OpenVision.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenVision-IPA
+          path: build/OpenVision.ipa
