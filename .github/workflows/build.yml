@@ -17,21 +17,38 @@ jobs:
 
       - name: Show Versions
         run: |
-          echo "=== Xcode ==="
+          echo "======================================"
+          echo "XCODE VERSION"
+          echo "======================================"
           xcodebuild -version
+
           echo ""
-          echo "=== Swift ==="
+          echo "======================================"
+          echo "SWIFT VERSION"
+          echo "======================================"
           swift --version
+
           echo ""
-          echo "=== Available Xcode Versions ==="
+          echo "======================================"
+          echo "AVAILABLE XCODE VERSIONS"
+          echo "======================================"
           ls -d /Applications/Xcode*.app
+
+      - name: Trust Swift Macros
+        run: |
+          echo "Disabling Xcode macro fingerprint validation for CI..."
+
+          defaults write com.apple.dt.Xcode \
+            IDESkipMacroFingerprintValidation \
+            -bool YES
 
       - name: Resolve Package Dependencies
         run: |
           xcodebuild \
             -resolvePackageDependencies \
             -project OpenVision.xcodeproj \
-            -scheme OpenVision
+            -scheme OpenVision \
+            -skipMacroValidation
 
       - name: Build App
         run: |
@@ -41,21 +58,57 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
+            -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             clean build
 
+      - name: Check Built App
+        run: |
+          echo "Checking for OpenVision.app..."
+
+          if [ -d "build/Release-iphoneos/OpenVision.app" ]; then
+            echo "OpenVision.app found in build directory."
+          else
+            echo "Searching for OpenVision.app..."
+            find . -name "OpenVision.app" -type d -print
+          fi
+
       - name: Package IPA
         run: |
+          set -e
+
           mkdir -p build/Payload
-          cp -r build/Release-iphoneos/OpenVision.app build/Payload/
+
+          cp -R \
+            build/Release-iphoneos/OpenVision.app \
+            build/Payload/OpenVision.app
+
           cd build
+
+          rm -f OpenVision.ipa
+
           zip -r OpenVision.ipa Payload
+
+          echo ""
+          echo "======================================"
+          echo "IPA CREATED"
+          echo "======================================"
+
+          ls -lh OpenVision.ipa
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenVision-IPA
           path: build/OpenVision.ipa
+          if-no-files-found: error
+
+      - name: Complete
+        run: |
+          echo "======================================"
+          echo "BUILD COMPLETE"
+          echo "======================================"
+          echo "OpenVision IPA was successfully created."
