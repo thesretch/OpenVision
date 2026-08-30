@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: macos-15
 
     steps:
 
@@ -23,13 +23,19 @@ jobs:
 
       - name: Select Xcode
         run: |
+          set -e
+
           echo "Available Xcode installations:"
           ls -d /Applications/Xcode*.app
 
           echo ""
-          echo "Selecting Xcode 26.5..."
+          echo "Selecting latest available Xcode..."
 
-          sudo xcode-select -s /Applications/Xcode_26.5.app
+          LATEST_XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)
+
+          echo "Resolved: $LATEST_XCODE"
+
+          sudo xcode-select -s "$LATEST_XCODE"
 
           echo ""
           echo "Selected Xcode:"
@@ -83,6 +89,21 @@ jobs:
             -bool YES
 
           echo "Macro fingerprint validation disabled."
+
+
+      # ============================================================
+      # CACHE SWIFT PACKAGE MANAGER DEPENDENCIES
+      # ============================================================
+
+      - name: Cache SPM Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+            build/DerivedData/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
 
 
       # ============================================================
@@ -220,6 +241,23 @@ jobs:
 
 
       # ============================================================
+      # CHECKSUM
+      # ============================================================
+
+      - name: Generate Checksum
+        run: |
+          set -e
+
+          cd build
+
+          echo "======================================"
+          echo "SHA-256 CHECKSUM"
+          echo "======================================"
+
+          shasum -a 256 OpenVision.ipa | tee OpenVision.ipa.sha256
+
+
+      # ============================================================
       # UPLOAD IPA
       # ============================================================
 
@@ -227,7 +265,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OpenVision-IPA
-          path: build/OpenVision.ipa
+          path: |
+            build/OpenVision.ipa
+            build/OpenVision.ipa.sha256
           if-no-files-found: error
 
 
