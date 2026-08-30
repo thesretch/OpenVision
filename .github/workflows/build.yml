@@ -26,6 +26,11 @@ jobs:
           cp Config.xcconfig.example Config.xcconfig
           echo "Config.xcconfig created from example template"
 
+      - name: Generate Config.swift
+        run: |
+          cp OpenVision/Config/Config.swift.example OpenVision/Config/Config.swift
+          echo "Config.swift created from example template"
+
 
       # ============================================================
       # SELECT XCODE
