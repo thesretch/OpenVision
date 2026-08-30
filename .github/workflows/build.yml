@@ -34,9 +34,15 @@ jobs:
           echo "======================================"
           ls -d /Applications/Xcode*.app
 
-      - name: Trust Swift Macros
+      - name: Trust Swift Package Plugins
         run: |
-          echo "Disabling Xcode macro fingerprint validation for CI..."
+          echo "Disabling package plugin validation for CI..."
+
+          defaults write com.apple.dt.Xcode \
+            IDESkipPackagePluginFingerprintValidatation \
+            -bool YES
+
+          echo "Disabling macro validation for CI..."
 
           defaults write com.apple.dt.Xcode \
             IDESkipMacroFingerprintValidation \
@@ -48,6 +54,7 @@ jobs:
             -resolvePackageDependencies \
             -project OpenVision.xcodeproj \
             -scheme OpenVision \
+            -skipPackagePluginValidation \
             -skipMacroValidation
 
       - name: Build App
@@ -58,6 +65,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
+            -skipPackagePluginValidation \
             -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -67,19 +75,30 @@ jobs:
 
       - name: Check Built App
         run: |
-          echo "Checking for OpenVision.app..."
+          echo "======================================"
+          echo "CHECKING BUILD OUTPUT"
+          echo "======================================"
 
           if [ -d "build/Release-iphoneos/OpenVision.app" ]; then
-            echo "OpenVision.app found in build directory."
+            echo "OpenVision.app found!"
+            du -sh build/Release-iphoneos/OpenVision.app
           else
-            echo "Searching for OpenVision.app..."
+            echo "OpenVision.app was not found in the expected location."
+            echo ""
+            echo "Searching for the application..."
             find . -name "OpenVision.app" -type d -print
+            exit 1
           fi
 
       - name: Package IPA
         run: |
           set -e
 
+          echo "======================================"
+          echo "PACKAGING IPA"
+          echo "======================================"
+
+          rm -rf build/Payload
           mkdir -p build/Payload
 
           cp -R \
@@ -108,7 +127,8 @@ jobs:
 
       - name: Complete
         run: |
+          echo ""
           echo "======================================"
           echo "BUILD COMPLETE"
           echo "======================================"
-          echo "OpenVision IPA was successfully created."
+          echo "OpenVision.ipa has been created successfully."
