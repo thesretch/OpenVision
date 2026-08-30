@@ -10,17 +10,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Xcode with Swift 6.2
+      - name: Select Xcode
         run: |
-          if [ -d "/Applications/Xcode_16.3.app" ]; then
+          if [ -d "/Applications/Xcode_16.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          elif [ -d "/Applications/Xcode_16.3.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.3.app
-          elif [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app
           fi
-          xcodebuild -version
-          swift --version
+
+      - name: Patch Swift Tools Version
+        run: |
+          find . -name "Package.swift" -exec sed -i '' 's/swift-tools-version: 6.2/swift-tools-version: 6.0/g; s/swift-tools-version:6.2/swift-tools-version:6.0/g' {} +
+          find Vendor -name "Package.swift" -exec sed -i '' 's/swift-tools-version: 6.2/swift-tools-version: 6.0/g; s/swift-tools-version:6.2/swift-tools-version:6.0/g' {} + 2>/dev/null || true
 
       - name: Build App
         run: |
