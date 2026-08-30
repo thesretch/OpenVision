@@ -6,22 +6,23 @@ on:
 jobs:
   build:
     runs-on: macos-15
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          if [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app
-          elif [ -d "/Applications/Xcode_16.3.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.3.app
-          fi
+          sudo xcode-select -s /Applications/Xcode_16.4.app
 
       - name: Patch Swift Tools Version
         run: |
-          find . -name "Package.swift" -exec sed -i '' 's/swift-tools-version: 6.2/swift-tools-version: 6.0/g; s/swift-tools-version:6.2/swift-tools-version:6.0/g' {} +
-          find Vendor -name "Package.swift" -exec sed -i '' 's/swift-tools-version: 6.2/swift-tools-version: 6.0/g; s/swift-tools-version:6.2/swift-tools-version:6.0/g' {} + 2>/dev/null || true
+          # Fetch and cache SPM dependencies first
+          xcodebuild -resolvePackageDependencies -project OpenVision.xcodeproj -scheme OpenVision || true
+          
+          # Downgrade swift-tools-version in any cached mlx-swift packages to match Swift 6.1
+          find ~/Library/Caches/org.swift.swiftpm ~/Library/Developer/Xcode/DerivedData -name "Package.swift" -path "*mlx-swift*" -exec sed -i '' 's/swift-tools-version: 6.3/swift-tools-version: 6.1/g' {} + 2>/dev/null || true
+          find . -name "Package.swift" -path "*mlx-swift*" -exec sed -i '' 's/swift-tools-version: 6.3/swift-tools-version: 6.1/g' {} + 2>/dev/null || true
 
       - name: Build App
         run: |
@@ -30,7 +31,7 @@ jobs:
             -scheme OpenVision \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
+            -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -39,12 +40,12 @@ jobs:
 
       - name: Package IPA
         run: |
-          mkdir -p Payload
-          find . -name "OpenVision.app" -type d -exec cp -r {} Payload/ \;
-          zip -r OpenVision.ipa Payload
+          mkdir -p build/Payload
+          cp -r build/Release-iphoneos/OpenVision.app build/Payload/
+          cd build && zip -r OpenVision.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenVision-IPA
-          path: OpenVision.ipa
+          path: build/OpenVision.ipa
